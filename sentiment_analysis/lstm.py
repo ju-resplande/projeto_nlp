@@ -6,7 +6,8 @@ import csv
 import os
 
 from torch.utils.data import TensorDataset, DataLoader
-from sklearn.metrics import classification_report
+from torch.utils.tensorboard import SummaryWriter
+from sklearn.metrics import classification_report, ConfusionMatrixDisplay
 from torch import nn, optim
 from tqdm import tqdm
 import pandas as pd
@@ -20,10 +21,11 @@ DATA_PATH = "algum lugar"
 
 # TODO: ver pad_idx
 # TODO: colocar loguru
-# TODO: colocar tensorboard
 # TODO: Colocar paralelismo
 # TODO: qual embedding pegar?
-# TODO: testar
+# TODO: testar embedding
+
+# TODO: testar modelo
 
 
 class Word2Vec:
@@ -142,6 +144,7 @@ class LSTM(nn.Module, AbsModel):
         train_data_loader: DataLoader,
         val_data_loader: DataLoader,
         print_every: int,
+        writer: SummaryWriter,
     ):
         step = 0
         for epoch in range(n_epochs):
@@ -163,15 +166,18 @@ class LSTM(nn.Module, AbsModel):
                 nn.utils.clip_grad_norm(self.parameters(), self.config["clip"])
                 self.optimizer.step()
 
+                writer.add_scalar("Loss/train", loss.item(), step)
+
                 if (step % print_every) == 0:
                     step += 1
-                    self.do_validation(batch_size, val_data_loader)
+                    val_loss = self.do_validation(batch_size, val_data_loader)
+                    writer.add_scalar("Loss/validation", val_loss.item(), step)
                     self.train()
 
                 print(
                     "Epoch: {}/{}".format((epoch + 1), n_epochs),
                     "Step: {}".format(step),
-                    "Training Loss: {:.4f}".format(loss.item()),
+                    "Training Loss: {:.4f}".format(val_loss.item()),
                     "Validation Loss: {:.4f}".format(),
                 )
 
@@ -213,7 +219,9 @@ class LSTM(nn.Module, AbsModel):
             total_preds.extend(preds)
             total_labels.extend(labels)
 
-        return total_labels, total_preds
+        loss = np.mean(losses)
+
+        return total_labels, total_preds, loss
 
     def do_predict(
         self,
@@ -233,6 +241,8 @@ def main():
     batch_size = 8
     n_epochs = 4
 
+    writer = SummaryWriter(comment="LSTM_training")
+
     ## Load, preprocess and embed data
     embedder = Word2Vec("word2vec.kv")
 
@@ -251,13 +261,26 @@ def main():
     embedding_matrix = embedder.embedding_matrix
     model = LSTM(embedding_matrix, n_class, max_seq_len)
     model.do_training(
-        n_epochs, batch_size, data_loader["train"], data_loader["dev"], print_every
+        n_epochs,
+        batch_size,
+        data_loader["train"],
+        data_loader["dev"],
+        print_every,
+        writer,
     )
 
     ## Test model
     Y = embedder.get_idx()
-    labels, preds = model.do_test(batch_size, data_loader["test"])
+    labels, preds, loss = model.do_test(batch_size, data_loader["test"], writer)
+
+    writer.add_scalar("Loss/test", loss.item())
+    print(f"Test loss: {loss}")
+
     print(classification_report(labels, preds))
+
+    writer.add_figure(ConfusionMatrixDisplay(labels, preds), 'Confusion matrix')
+
+    writer.close()
 
 
 if __name__ == "__main__":
