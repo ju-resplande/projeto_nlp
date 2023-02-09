@@ -2,3 +2,6 @@ nltk
 scikit-learn
 gensim
 tqdm
+torch
+numpy
+pandas
