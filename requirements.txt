@@ -8,3 +8,6 @@ pandas
 luigi
 surprise
 pyarrow
+plotly
+nbformat
+kaleido
