@@ -68,5 +68,18 @@ class B2WPrepareDataset(luigi.Task):
             test_df["reviewer_id"].values
         )
 
+        train_products = (
+            train_df.groupby(["product_id"])
+            .count()["review"]
+            .reset_index()
+            .rename(columns={"review": "review_count"})
+        )
+        test_df = test_df.merge(train_products, on="product_id", how="left").dropna(
+            subset=["review_count"]
+        )
+
+        print("Final Train data with shape: ", train_df.shape)
+        print("Final Test data with shape: ", test_df.shape)
+
         train_df.to_csv(self.output()["train_df"].path, index=False)
         test_df.to_csv(self.output()["test_df"].path, index=False)
