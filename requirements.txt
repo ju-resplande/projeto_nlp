@@ -5,6 +5,9 @@ tqdm
 torch
 numpy
 pandas
-datasets
-transformers
-huggingface_hub
+luigi
+surprise
+pyarrow
+plotly
+nbformat
+kaleido
