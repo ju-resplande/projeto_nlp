@@ -17,7 +17,7 @@ import torch
 from utils import preprocess_sentence
 from model import AbsModel
 
-DATA_PATH = "algum lugar"
+DATA_PATH = "../data"
 
 # TODO: ver pad_idx
 # TODO: colocar loguru
@@ -37,38 +37,40 @@ class Word2Vec:
         self.word2idx: dict = {word: idx for idx, word in enumerate(self.vocab)}
         self.idx2word: dict = self.vocab
 
-        self.embedding_matrix: np.ndarray = np.array(self.embedding_matrix)
+        #self.embedding_matrix: np.ndarray = self.embedding_matrix
 
-    @staticmethod
-    def read_embeddings(vector_file: str) -> None:
+    def read_embeddings(self, vector_file: str) -> None:
         vocab, embedding_matrix = list(), list()
         with open(vector_file) as f:
-            csv_reader = csv.reader(f, delimiter="\t")
+            vocab_size, embedding_size = f.readline().strip().split()
+            self.embedding_matrix = np.empty((int(vocab_size), int(embedding_size)), dtype=np.float32)
+            csv_reader = csv.reader(f, delimiter=" ")
 
-        for row in tqdm(csv_reader):
-            vocab.append(row[0])
-            embedding_matrix.append(row[1:])
+            for i, row in tqdm(enumerate(csv_reader)):
+                vocab.append(row[0])
+                self.embedding_matrix[i] = np.asarray(row[1:])
+                #embedding_matrix.append(np.asarray(row[1:]))
 
-        return vocab, embedding_matrix
+        return vocab, self.embedding_matrix
 
     def get_idx(self, inputs: List[str], max_seq_len: int) -> List[float]:
         inputs_idx = list()
         for string in tqdm(inputs):
             string = preprocess_sentence(string)
-            words = " ".split(string)
+            words = string.split(" ")
 
             input_idx = [self.word2idx.get(w, Word2Vec.pad_idx) for w in words]
 
             if len(input_idx) < max_seq_len:
                 input_idx += (max_seq_len - len(input_idx)) * [Word2Vec.pad_idx]
-
-            inputs_idx.append(input_idx)
+            
+            inputs_idx.append(np.asarray(input_idx[:max_seq_len]))
 
         inputs_idx = np.array(inputs_idx)
         return inputs_idx
 
 
-class LSTM(nn.Module, AbsModel):
+class LSTM(nn.Module):
     config = {
         "n_hidden": 512,
         "n_layers": 2,
@@ -81,6 +83,7 @@ class LSTM(nn.Module, AbsModel):
     def __init__(
         self, embedding_matrix: np.ndarray, n_class: int, max_seq_len: int, device: str
     ) -> None:
+        super(LSTM, self).__init__()
         self.config = LSTM.config.copy()
         self.config["max_seq_len"] = max_seq_len
         self.config["n_class"] = n_class
@@ -89,14 +92,9 @@ class LSTM(nn.Module, AbsModel):
         self.config["n_vocab"] = embedding_matrix.shape[0]
         self.config["n_embed"] = embedding_matrix.shape[1]
 
-        self.criterion = nn.BCELoss()
-        self.optimizer = optim.Adam(self.parameters(), lr=self.config["lr"])
-
-        self.embed = nn.Embedding(
-            self.config["n_vocab"],
-            self.config["n_embed"],
-            input_length=self.config["max_seq_len"],
-            weights=[embedding_matrix],
+        self.embed = nn.Embedding.from_pretrained(
+            torch.Tensor(embedding_matrix),
+            freeze=True
         )
         self.lstm = nn.LSTM(
             self.config["n_embed"],
@@ -105,16 +103,21 @@ class LSTM(nn.Module, AbsModel):
             dropout=self.config["dropout_p"],
             batch_first=True,
         )
-        self.dropout = (nn.Dropout(self.config["dropout_p"]),)
+        self.dropout = nn.Dropout(self.config["dropout_p"])
         self.fc = nn.Linear(self.config["n_hidden"], self.config["n_class"])
         self.sigmoid = nn.Sigmoid()
+        
+        self.criterion = nn.BCELoss()
+        self.optimizer = optim.Adam(self.parameters(), lr=self.config["lr"])
+        self.to(self.config["device"])
 
-    def forward(self, inputs, batch_size) -> Tuple[torch.Tensor]:
+    def forward(self, inputs) -> Tuple[torch.Tensor]:
+        batch_size = inputs.shape[0]
         embedded = self.embed(inputs)
 
         output, hidden = self.lstm(embedded)
         output = self.dropout(output)
-        output = output.contiguous().view(-1, self.n_hidden)
+        output = output.contiguous().view(-1, self.config["n_hidden"])
 
         output = self.fc(output)
 
@@ -127,10 +130,10 @@ class LSTM(nn.Module, AbsModel):
     def init_hidden(self, batch_size):
         weights = next(self.parameters()).data
         h = (
-            weights.new(self.n_layers, batch_size, self.n_hidden)
+            weights.new(self.config["n_layers"], batch_size, self.config["n_hidden"])
             .zero_()
             .to(self.config["device"]),
-            weights.new(self.n_layers, batch_size, self.n_hidden)
+            weights.new(self.config["n_layers"], batch_size, self.config["n_hidden"])
             .zero_()
             .to(self.config["device"]),
         )
@@ -174,12 +177,12 @@ class LSTM(nn.Module, AbsModel):
                     writer.add_scalar("Loss/validation", val_loss.item(), step)
                     self.train()
 
-                print(
-                    "Epoch: {}/{}".format((epoch + 1), n_epochs),
-                    "Step: {}".format(step),
-                    "Training Loss: {:.4f}".format(val_loss.item()),
-                    "Validation Loss: {:.4f}".format(),
-                )
+                    print(
+                        "Epoch: {}/{}".format((epoch + 1), n_epochs),
+                        "Step: {}".format(step),
+                        "Training Loss: {:.4f}".format(loss.item()),
+                        "Validation Loss: {:.4f}".format(val_loss.item()),
+                    )
 
     def do_validation(self, batch_size: int, data_loader: DataLoader):
         self.eval()
@@ -235,6 +238,7 @@ class LSTM(nn.Module, AbsModel):
         return output, hidden
 
 
+
 def main():
     max_seq_len = 80
     print_every = 3
@@ -244,22 +248,25 @@ def main():
     writer = SummaryWriter(comment="LSTM_training")
 
     ## Load, preprocess and embed data
-    embedder = Word2Vec("word2vec.kv")
+    embedder = Word2Vec("skip_s300.txt")
 
     data_loader = dict()
     for split in ["train", "dev", "test"]:
-        df = pd.read_csv(os.path.append(DATA_PATH, f"{split}.csv")).to_numpy()
-        X = df[:-1]
+        df = pd.read_csv(os.path.join(DATA_PATH, f"{split}_sa.csv"))
+        X = df['review'].to_numpy()
         X = embedder.get_idx(X, max_seq_len)
 
-        Y = df[0]
+        Y = df['rating'].apply(lambda x: 0 if x == -1 else 1)
         n_class = Y.unique().shape[0]
+        Y = Y.to_numpy()
 
-        data_loader[split] = DataLoader(TensorDataset(X, Y), batch_size=batch_size)
+        print(X.shape, Y.shape)
 
+        data_loader[split] = DataLoader(TensorDataset(torch.from_numpy(X), torch.from_numpy(Y)), batch_size=batch_size)
+        
     ## Train model
     embedding_matrix = embedder.embedding_matrix
-    model = LSTM(embedding_matrix, n_class, max_seq_len)
+    model = LSTM(embedding_matrix, n_class, max_seq_len, torch.device('cuda:0'))
     model.do_training(
         n_epochs,
         batch_size,
