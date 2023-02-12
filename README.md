@@ -42,7 +42,7 @@ Versões disponíveis:
 
 Para reproduzir os experimentos
 ```
-bahs b2w.sh
+bash b2w.sh
 ```
 
 
