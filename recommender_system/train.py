@@ -207,5 +207,5 @@ class TrainRS(luigi.Task):
         return nmf, params
 
     def save_model(self, algo, path):
-        save_path = os.path.join(path, str(self.recommender_model, ".pkl"))
+        save_path = os.path.join(path, str(self.recommender_model + ".pkl"))
         dump.dump(save_path, algo=algo)
