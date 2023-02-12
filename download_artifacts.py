@@ -42,7 +42,7 @@ def GDDownload(folder):
 
 
 if __name__ == "__main__":
-    shutil.rmtree("b2w")
+    shutil.rmtree("b2w", ignore_errors=True)
     drive_files = ["dataset", "models", "data_with_embeddings"]
     for f in drive_files:
         GDDownload(f)
