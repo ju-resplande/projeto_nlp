@@ -27,6 +27,11 @@ python download_artifacts.py
 ```
 
 ## Análise de Sentimento
+Versões disponíveis: 
+* Baseline: Regressão logística com TF-IDF
+* Bertimbau
+
+Para reproduzir os experimentos, execute os notebooks `baseline.ipynb` e `bert.ipynb`
 
 
 ## Sistema de Recomendação
