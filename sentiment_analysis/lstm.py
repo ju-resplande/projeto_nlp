@@ -72,10 +72,10 @@ class Word2Vec:
 
 class LSTM(nn.Module):
     config = {
-        "n_hidden": 512,
+        "n_hidden": 64,
         "n_layers": 2,
         "dropout_p": 0.5,
-        "lr": 0.001,
+        "lr": 0.0001,
         "clip": 5,
         "device": "cuda" if torch.cuda.is_available() else "cpu",
     }
@@ -173,7 +173,7 @@ class LSTM(nn.Module):
 
                 if (step % print_every) == 0:
                     step += 1
-                    val_loss = self.do_validation(batch_size, val_data_loader)
+                    val_loss, cls_report = self.do_validation(batch_size, val_data_loader)
                     writer.add_scalar("Loss/validation", val_loss.item(), step)
                     self.train()
 
@@ -181,14 +181,17 @@ class LSTM(nn.Module):
                         "Epoch: {}/{}".format((epoch + 1), n_epochs),
                         "Step: {}".format(step),
                         "Training Loss: {:.4f}".format(loss.item()),
-                        "Validation Loss: {:.4f}".format(val_loss.item()),
+                        "Validation Loss: {:.4f}".format(val_loss.item())
                     )
+                    print(cls_report)
 
     def do_validation(self, batch_size: int, data_loader: DataLoader):
         self.eval()
 
         hidden = self.init_hidden(batch_size)
         losses = list()
+        y_true = []
+        y_pred = []
         for inputs, labels in data_loader:
             inputs, labels = inputs.to(self.config["device"]), labels.to(
                 self.config["device"]
@@ -200,10 +203,15 @@ class LSTM(nn.Module):
             loss = self.criterion(output.squeeze(), labels.float())
 
             losses.append(loss.item())
-
+            
+            y_true.extend(labels.cpu().detach().numpy())
+            y_pred.extend((output.squeeze().cpu().detach().numpy() > 0.5).astype(np.intc))
+        
+        cls_report = classification_report(y_true, y_pred)
+            
         loss = np.mean(losses)
 
-        return loss
+        return loss, cls_report
 
     def do_test(self, batch_size: int, data_loader: DataLoader):
         total_preds = []
@@ -221,8 +229,10 @@ class LSTM(nn.Module):
             preds = torch.round(output.squeeze())
             total_preds.extend(preds)
             total_labels.extend(labels)
-
+    
         loss = np.mean(losses)
+        cls_report = classification_report(total_labels, total_preds)
+        print(cls_report)
 
         return total_labels, total_preds, loss
 
@@ -238,10 +248,9 @@ class LSTM(nn.Module):
         return output, hidden
 
 
-
 def main():
     max_seq_len = 80
-    print_every = 3
+    print_every = 100
     batch_size = 8
     n_epochs = 4
 
@@ -261,8 +270,8 @@ def main():
         Y = Y.to_numpy()
 
         print(X.shape, Y.shape)
-
-        data_loader[split] = DataLoader(TensorDataset(torch.from_numpy(X), torch.from_numpy(Y)), batch_size=batch_size)
+        
+        data_loader[split] = DataLoader(TensorDataset(torch.from_numpy(X), torch.from_numpy(Y)), batch_size=batch_size, shuffle=True)
         
     ## Train model
     embedding_matrix = embedder.embedding_matrix
