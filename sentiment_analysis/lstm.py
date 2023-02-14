@@ -7,7 +7,7 @@ import os
 
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from sklearn.metrics import classification_report, ConfusionMatrixDisplay
+from sklearn.metrics import classification_report, ConfusionMatrixDisplay, confusion_matrix
 from torch import nn, optim
 from tqdm import tqdm
 import pandas as pd
@@ -219,16 +219,19 @@ class LSTM(nn.Module):
 
         self.eval()
         hidden = self.init_hidden(batch_size)
-        losses = ()
+        losses = list()
         for inputs, labels in data_loader:
-            hidden = tuple([each.data for each in hidden])
-            output, hidden = self(inputs, hidden)
-            loss = self.criterion(output, labels)
+            inputs, labels = inputs.to(self.config["device"]), labels.to(
+                self.config["device"]
+            )
+            #hidden = tuple([each.data for each in hidden])
+            output, hidden = self(inputs)
+            loss = self.criterion(output.squeeze(), labels.float())
             losses.append(loss.item())
 
             preds = torch.round(output.squeeze())
-            total_preds.extend(preds)
-            total_labels.extend(labels)
+            total_preds.extend(preds.cpu().detach().numpy())
+            total_labels.extend(labels.cpu().detach().numpy())
     
         loss = np.mean(losses)
         cls_report = classification_report(total_labels, total_preds)
@@ -286,15 +289,15 @@ def main():
     )
 
     ## Test model
-    Y = embedder.get_idx()
-    labels, preds, loss = model.do_test(batch_size, data_loader["test"], writer)
+    #Y = embedder.get_idx()
+    labels, preds, loss = model.do_test(batch_size, data_loader["test"])
 
     writer.add_scalar("Loss/test", loss.item())
     print(f"Test loss: {loss}")
 
     print(classification_report(labels, preds))
 
-    writer.add_figure(ConfusionMatrixDisplay(labels, preds), 'Confusion matrix')
+    #writer.add_figure(ConfusionMatrixDisplay(confusion_matrix(labels, preds)), 'Confusion matrix')
 
     writer.close()
 
