@@ -1,6 +1,6 @@
 # Processamento de Linguagem Natural
 
-[Esse repositório](https://github.com/ju-resplande/projeto_nlp) contém o projeto durante o curso de Processamento de Linguagem Natural, ofertado pelo Instituto de Informática da Universidade Federal de Goiás, ministrado pelo Prof. Dr. Arlindo Rodrigues Galvão Filho em 2022-2. 
+[Este repositório](https://github.com/ju-resplande/projeto_nlp) contém o projeto durante o curso de Processamento de Linguagem Natural, ofertado pelo Instituto de Informática da Universidade Federal de Goiás, ministrado pelo Prof. Dr. Arlindo Rodrigues Galvão Filho em 2022-2. 
 
 O projeto está dividido em duas partes: `sentiment_analysis` e `recommender_system`.
 
